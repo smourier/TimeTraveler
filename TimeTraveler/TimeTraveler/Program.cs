@@ -14,6 +14,7 @@ namespace TimeTraveler
         static TimeSpan _delta;
         static bool _frozen;
 
+        [STAThread]
         static void Main(string[] args)
         {
             if (Debugger.IsAttached)
@@ -88,16 +89,10 @@ namespace TimeTraveler
             {
                 var getDate = hook.CreateHook<GetSystemTimeAsFileTime>("kernel32.dll", "GetSystemTimeAsFileTime", GetSystemTimeAsFileTimeHook);
                 hook.EnableHook(getDate);
-                var asm = Assembly.LoadFile(path);
 
-                if (asm.EntryPoint.GetParameters().Length == 0)
-                {
-                    asm.EntryPoint.Invoke(null, null);
-                }
-                else
-                {
-                    asm.EntryPoint.Invoke(null, new object[] { appArgs.ToArray() });
-                }
+                var setup = new AppDomainSetup();
+                var domain = AppDomain.CreateDomain(Path.GetFileName(path), null, setup);
+                domain.ExecuteAssembly(path, appArgs.ToArray());
                 hook.DisableHook(getDate);
             }
         }
@@ -107,14 +102,15 @@ namespace TimeTraveler
             if (_frozen)
             {
                 lpSystemTimeAsFileTime = _start.ToFileTime();
-                return;
-
             }
-
-            GetSystemTimePreciseAsFileTime(out long st);
-            var real = DateTime.FromFileTime(st);
-            var dt = real - _delta;
-            lpSystemTimeAsFileTime = dt.ToFileTime();
+            else
+            {
+                GetSystemTimePreciseAsFileTime(out long st);
+                var real = DateTime.FromFileTime(st);
+                var dt = real - _delta;
+                lpSystemTimeAsFileTime = dt.ToFileTime();
+            }
+            Console.WriteLine(DateTime.FromFileTime(lpSystemTimeAsFileTime));
         }
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
