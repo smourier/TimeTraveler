@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using TimeTraveler.Utilities;
 
 namespace TimeTraveler
@@ -90,11 +91,32 @@ namespace TimeTraveler
                 var getDate = hook.CreateHook<GetSystemTimeAsFileTime>("kernel32.dll", "GetSystemTimeAsFileTime", GetSystemTimeAsFileTimeHook);
                 hook.EnableHook(getDate);
 
+                var getProp = hook.CreateHook<GetPropWFn>("user32.dll", "GetPropW", GetPropWHook);
+                hook.EnableHook(getProp);
+
                 var setup = new AppDomainSetup();
                 var domain = AppDomain.CreateDomain(Path.GetFileName(path), null, setup);
                 domain.ExecuteAssembly(path, appArgs.ToArray());
+                hook.DisableHook(getProp);
                 hook.DisableHook(getDate);
             }
+        }
+
+        static IntPtr GetPropWHook(IntPtr hWnd, IntPtr lpString)
+        {
+            //var ptr = GetPropW(hWnd, lpString);
+            Console.WriteLine("GetPropWHook lp:" + lpString);
+            if (lpString.ToInt64() < ushort.MaxValue)
+            {
+                var sb = new StringBuilder(256);
+                GlobalGetAtomName((ushort)lpString, sb, sb.Capacity);
+                Console.WriteLine(" " + sb);
+            }
+            else
+            {
+                Console.WriteLine(" '" + Marshal.PtrToStringUni(lpString) + "'");
+            }
+            return IntPtr.Zero;
         }
 
         static void GetSystemTimeAsFileTimeHook(out long lpSystemTimeAsFileTime)
@@ -116,8 +138,17 @@ namespace TimeTraveler
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         private delegate void GetSystemTimeAsFileTime(out long lpSystemTimeAsFileTime);
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        private delegate IntPtr GetPropWFn(IntPtr hWnd, IntPtr lpString);
+
         [DllImport("kernel32")]
         private static extern void GetSystemTimePreciseAsFileTime(out long lpSystemTimeAsFileTime);
+
+        [DllImport("user32")]
+        private static extern IntPtr GetPropW(IntPtr hWnd, IntPtr lpString);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GlobalGetAtomName(ushort nAtom, StringBuilder lpBuffer, int nSize);
 
         static void Help()
         {
